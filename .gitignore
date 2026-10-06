@@ -1,0 +1,14 @@
+ASSIGNMENT.md
+CLAUDE.md
+
+# Build output
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Env
+.env
