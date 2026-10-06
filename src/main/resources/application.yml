@@ -4,6 +4,14 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/seats
+    username: seats
+    password: seats-dev
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 server:
   port: 8080
