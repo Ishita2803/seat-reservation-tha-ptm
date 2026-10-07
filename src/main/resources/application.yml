@@ -22,3 +22,9 @@ spring:
 
 server:
   port: 8080
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:zr3F+mYph87cxUJ/V/hovtwqHJ5HUguwLN8n7pP6AME=}
+    expiry-hours: 24
+  admin-secret: ${ADMIN_SECRET:dev-admin-secret}
