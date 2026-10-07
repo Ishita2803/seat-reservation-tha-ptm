@@ -12,6 +12,13 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+  jackson:
+    property-naming-strategy: SNAKE_CASE
 
 server:
   port: 8080
