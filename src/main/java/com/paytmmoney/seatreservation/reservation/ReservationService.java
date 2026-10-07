@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paytmmoney.seatreservation.common.DeclineException;
 import com.paytmmoney.seatreservation.show.Seat;
 import com.paytmmoney.seatreservation.show.SeatRepository;
@@ -23,6 +26,8 @@ public class ReservationService {
     private final SeatRepository seatRepository;
     private final ReservationRepository reservationRepository;
     private final UserShowLockRepository userShowLockRepository;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
+    private final ObjectMapper objectMapper;
     private final Duration holdTtl;
 
     public ReservationService(
@@ -30,21 +35,52 @@ public class ReservationService {
             SeatRepository seatRepository,
             ReservationRepository reservationRepository,
             UserShowLockRepository userShowLockRepository,
+            IdempotencyKeyRepository idempotencyKeyRepository,
+            ObjectMapper objectMapper,
             @Value("${app.hold-ttl-minutes}") long holdTtlMinutes) {
         this.showRepository = showRepository;
         this.seatRepository = seatRepository;
         this.reservationRepository = reservationRepository;
         this.userShowLockRepository = userShowLockRepository;
+        this.idempotencyKeyRepository = idempotencyKeyRepository;
+        this.objectMapper = objectMapper;
         this.holdTtl = Duration.ofMinutes(holdTtlMinutes);
     }
 
+    /**
+     * Throws {@link org.springframework.dao.DataIntegrityViolationException} on a duplicate
+     * idempotency key; the caller (a non-transactional orchestrator) must resolve the replay
+     * in a fresh transaction, since this transaction and its persistence context are now dead.
+     */
     @Transactional
-    public ReservationResponse reserve(Long showId, String userId, ReserveRequest request) {
+    public ReservationResponse reserve(Long showId, String userId, String idempotencyKey, ReserveRequest request) {
         List<String> labels = List.copyOf(new LinkedHashSet<>(request.seats()));
         if (labels.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "seats required");
         }
 
+        String requestHash = IdempotencyHash.compute(showId, request.seats());
+        var replay = findReplay(userId, idempotencyKey, requestHash);
+        if (replay.isPresent()) {
+            return replay.get();
+        }
+
+        try {
+            return doReserve(showId, userId, idempotencyKey, requestHash, labels, request);
+        } catch (DeclineException e) {
+            // A concurrent request with the same key may have committed while we were
+            // blocked on the seat lock; defer to it instead of declining this one.
+            var lateReplay = findReplay(userId, idempotencyKey, requestHash);
+            if (lateReplay.isPresent()) {
+                return lateReplay.get();
+            }
+            throw e;
+        }
+    }
+
+    private ReservationResponse doReserve(
+            Long showId, String userId, String idempotencyKey, String requestHash, List<String> labels,
+            ReserveRequest request) {
         var show = showRepository.findById(showId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "show not found"));
 
@@ -73,6 +109,38 @@ public class ReservationService {
 
         lockedSeats.forEach(seat -> seat.hold(reservation.getId(), userId, expiresAt));
 
-        return ReservationResponse.from(reservation);
+        ReservationResponse response = ReservationResponse.from(reservation);
+        idempotencyKeyRepository.saveAndFlush(
+                new IdempotencyKey(userId, idempotencyKey, requestHash, reservation.getId(), toJson(response)));
+
+        return response;
+    }
+
+    /** Empty when no key is stored yet; throws DeclineException when the key is reused with a different body. */
+    private Optional<ReservationResponse> findReplay(String userId, String idempotencyKey, String requestHash) {
+        var existing = idempotencyKeyRepository.findById(new IdempotencyKeyId(userId, idempotencyKey));
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!existing.get().getRequestHash().equals(requestHash)) {
+            throw new DeclineException(HttpStatus.CONFLICT, "idempotency_key_reuse");
+        }
+        return Optional.of(fromJson(existing.get().getResponse()));
+    }
+
+    private String toJson(ReservationResponse response) {
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private ReservationResponse fromJson(String json) {
+        try {
+            return objectMapper.readValue(json, ReservationResponse.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

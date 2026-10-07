@@ -2,17 +2,29 @@ package com.paytmmoney.seatreservation.show;
 
 import java.time.Instant;
 
+import org.springframework.data.domain.Persistable;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "seats")
-public class Seat {
+public class Seat implements Persistable<SeatId> {
 
     @EmbeddedId
     private SeatId id;
+
+    /**
+     * Seats always have an assigned (show_id, label) id, so Spring Data would otherwise treat
+     * save() as an update (merge) instead of an insert. True only right after construction,
+     * so batched inserts on show creation stay plain inserts.
+     */
+    @Transient
+    private boolean isNew = false;
 
     @Column(nullable = false)
     private String status;
@@ -32,6 +44,22 @@ public class Seat {
     public Seat(Long showId, String label) {
         this.id = new SeatId(showId, label);
         this.status = "available";
+        this.isNew = true;
+    }
+
+    @Override
+    public SeatId getId() {
+        return id;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostPersist
+    void onPersisted() {
+        isNew = false;
     }
 
     public String getLabel() {
