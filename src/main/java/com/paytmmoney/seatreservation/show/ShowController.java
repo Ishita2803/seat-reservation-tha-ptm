@@ -7,6 +7,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.paytmmoney.seatreservation.auth.AuthenticatedUser;
+import com.paytmmoney.seatreservation.auth.JwtAuthFilter;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 public class ShowController {
@@ -19,7 +25,11 @@ public class ShowController {
 
     @PostMapping("/shows")
     @ResponseStatus(HttpStatus.CREATED)
-    public ShowResponse createShow(@RequestBody CreateShowRequest request) {
+    public ShowResponse createShow(@RequestBody CreateShowRequest request, HttpServletRequest httpRequest) {
+        var user = (AuthenticatedUser) httpRequest.getAttribute(JwtAuthFilter.USER_ATTRIBUTE);
+        if (!user.admin()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "admin token required");
+        }
         return showService.createShow(request);
     }
 
