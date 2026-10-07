@@ -19,6 +19,8 @@ import com.paytmmoney.seatreservation.show.Seat;
 import com.paytmmoney.seatreservation.show.SeatRepository;
 import com.paytmmoney.seatreservation.show.ShowRepository;
 
+import io.micrometer.core.instrument.MeterRegistry;
+
 @Service
 public class ReservationService {
 
@@ -28,6 +30,7 @@ public class ReservationService {
     private final UserShowLockRepository userShowLockRepository;
     private final IdempotencyKeyRepository idempotencyKeyRepository;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
     private final Duration holdTtl;
 
     public ReservationService(
@@ -37,6 +40,7 @@ public class ReservationService {
             UserShowLockRepository userShowLockRepository,
             IdempotencyKeyRepository idempotencyKeyRepository,
             ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
             @Value("${app.hold-ttl-minutes}") long holdTtlMinutes) {
         this.showRepository = showRepository;
         this.seatRepository = seatRepository;
@@ -44,6 +48,7 @@ public class ReservationService {
         this.userShowLockRepository = userShowLockRepository;
         this.idempotencyKeyRepository = idempotencyKeyRepository;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
         this.holdTtl = Duration.ofMinutes(holdTtlMinutes);
     }
 
@@ -113,6 +118,7 @@ public class ReservationService {
         idempotencyKeyRepository.saveAndFlush(
                 new IdempotencyKey(userId, idempotencyKey, requestHash, reservation.getId(), toJson(response)));
 
+        meterRegistry.counter("reservations_held_total").increment();
         return response;
     }
 
@@ -130,6 +136,7 @@ public class ReservationService {
         if (reservation.isExpired(now)) {
             releaseSeats(reservation);
             reservation.expire();
+            meterRegistry.counter("holds_expired_total").increment();
             throw new DeclineException(HttpStatus.CONFLICT, "hold_expired");
         }
 
@@ -137,6 +144,7 @@ public class ReservationService {
                 .forEach(Seat::confirm);
         reservation.confirm();
 
+        meterRegistry.counter("reservations_confirmed_total").increment();
         return ReservationResponse.from(reservation);
     }
 
@@ -170,6 +178,7 @@ public class ReservationService {
         if (!existing.get().getRequestHash().equals(requestHash)) {
             throw new DeclineException(HttpStatus.CONFLICT, "idempotency_key_reuse");
         }
+        meterRegistry.counter("reservations_idempotent_replay_total").increment();
         return Optional.of(fromJson(existing.get().getResponse()));
     }
 

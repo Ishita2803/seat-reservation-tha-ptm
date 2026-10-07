@@ -23,6 +23,15 @@ spring:
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
+      base-path: /
+      path-mapping:
+        prometheus: metrics
+
 app:
   jwt:
     secret: ${JWT_SECRET:zr3F+mYph87cxUJ/V/hovtwqHJ5HUguwLN8n7pP6AME=}

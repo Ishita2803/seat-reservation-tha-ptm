@@ -7,15 +7,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+
 @Service
 public class ShowService {
 
     private final ShowRepository showRepository;
     private final SeatRepository seatRepository;
+    private final MeterRegistry meterRegistry;
 
-    public ShowService(ShowRepository showRepository, SeatRepository seatRepository) {
+    public ShowService(ShowRepository showRepository, SeatRepository seatRepository, MeterRegistry meterRegistry) {
         this.showRepository = showRepository;
         this.seatRepository = seatRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -28,6 +33,8 @@ public class ShowService {
                 .toList();
         seatRepository.saveAll(seats);
 
+        registerSeatGauges(show.getId());
+
         return ShowResponse.from(show, seats);
     }
 
@@ -37,5 +44,20 @@ public class ShowService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "show not found"));
         List<Seat> seats = seatRepository.findByShowIdOrderByLabel(id);
         return ShowResponse.from(show, seats);
+    }
+
+    /** Reused by GET /shows/{id} and the per-show gauges, so both read the same effective state. */
+    SeatCounts effectiveCounts(Long showId) {
+        return SeatCounts.from(seatRepository.findByShowIdOrderByLabel(showId));
+    }
+
+    private void registerSeatGauges(Long showId) {
+        String tag = showId.toString();
+        Gauge.builder("seats_available", showId, id -> effectiveCounts(id).available())
+                .tag("show", tag).register(meterRegistry);
+        Gauge.builder("seats_held", showId, id -> effectiveCounts(id).held())
+                .tag("show", tag).register(meterRegistry);
+        Gauge.builder("seats_confirmed", showId, id -> effectiveCounts(id).confirmed())
+                .tag("show", tag).register(meterRegistry);
     }
 }

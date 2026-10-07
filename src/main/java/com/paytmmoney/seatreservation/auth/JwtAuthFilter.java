@@ -16,7 +16,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     public static final String USER_ATTRIBUTE = "authenticatedUser";
 
-    private static final Set<String> PUBLIC_PATHS = Set.of("/healthz", "/readyz", "/auth/tokens");
+    private static final Set<String> PUBLIC_PATHS = Set.of("/healthz", "/readyz", "/auth/tokens", "/metrics");
 
     private final JwtService jwtService;
 
