@@ -22,16 +22,19 @@ public class ReservationService {
     private final ShowRepository showRepository;
     private final SeatRepository seatRepository;
     private final ReservationRepository reservationRepository;
+    private final UserShowLockRepository userShowLockRepository;
     private final Duration holdTtl;
 
     public ReservationService(
             ShowRepository showRepository,
             SeatRepository seatRepository,
             ReservationRepository reservationRepository,
+            UserShowLockRepository userShowLockRepository,
             @Value("${app.hold-ttl-minutes}") long holdTtlMinutes) {
         this.showRepository = showRepository;
         this.seatRepository = seatRepository;
         this.reservationRepository = reservationRepository;
+        this.userShowLockRepository = userShowLockRepository;
         this.holdTtl = Duration.ofMinutes(holdTtlMinutes);
     }
 
@@ -54,6 +57,13 @@ public class ReservationService {
         boolean anyTaken = lockedSeats.stream().anyMatch(s -> !s.isEffectivelyAvailable(now));
         if (anyTaken) {
             throw new DeclineException(HttpStatus.CONFLICT, "seat_taken");
+        }
+
+        userShowLockRepository.ensureRow(showId, userId);
+        userShowLockRepository.lockRow(showId, userId);
+        long activeForUser = seatRepository.countActiveForUser(showId, userId, now);
+        if (activeForUser + labels.size() > show.getPerUserLimit()) {
+            throw new DeclineException(HttpStatus.CONFLICT, "per_user_limit");
         }
 
         Instant expiresAt = now.plus(holdTtl);

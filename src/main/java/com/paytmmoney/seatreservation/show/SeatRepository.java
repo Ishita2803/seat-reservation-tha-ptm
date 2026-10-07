@@ -1,5 +1,6 @@
 package com.paytmmoney.seatreservation.show;
 
+import java.time.Instant;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,4 +17,8 @@ public interface SeatRepository extends JpaRepository<Seat, SeatId> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Seat s WHERE s.id.showId = :showId AND s.id.label IN :labels ORDER BY s.id.label")
     List<Seat> lockSeatsForUpdate(Long showId, List<String> labels);
+
+    @Query("SELECT COUNT(s) FROM Seat s WHERE s.id.showId = :showId AND s.userId = :userId "
+            + "AND (s.status = 'confirmed' OR (s.status = 'held' AND s.expiresAt > :now))")
+    long countActiveForUser(Long showId, String userId, Instant now);
 }
