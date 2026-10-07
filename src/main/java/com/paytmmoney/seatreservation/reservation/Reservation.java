@@ -83,4 +83,23 @@ public class Reservation {
     public Instant getExpiresAt() {
         return expiresAt;
     }
+
+    public boolean isExpired(Instant now) {
+        return status.equals("held") && expiresAt != null && expiresAt.isBefore(now);
+    }
+
+    public void confirm() {
+        this.status = "confirmed";
+        this.expiresAt = null;
+    }
+
+    public void cancel() {
+        this.status = "cancelled";
+        this.expiresAt = null;
+    }
+
+    public void expire() {
+        this.status = "expired";
+        this.expiresAt = null;
+    }
 }

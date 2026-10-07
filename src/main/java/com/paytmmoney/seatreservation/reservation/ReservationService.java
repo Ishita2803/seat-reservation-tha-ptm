@@ -116,6 +116,51 @@ public class ReservationService {
         return response;
     }
 
+    @Transactional
+    public ReservationResponse confirm(Long reservationId, String userId) {
+        Reservation reservation = reservationRepository.lockById(reservationId)
+                .filter(r -> r.getUserId().equals(userId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "reservation not found"));
+
+        if (!reservation.getStatus().equals("held")) {
+            throw new DeclineException(HttpStatus.CONFLICT, "reservation_not_held");
+        }
+
+        Instant now = Instant.now();
+        if (reservation.isExpired(now)) {
+            releaseSeats(reservation);
+            reservation.expire();
+            throw new DeclineException(HttpStatus.CONFLICT, "hold_expired");
+        }
+
+        seatRepository.lockSeatsForUpdate(reservation.getShowId(), reservation.getSeats())
+                .forEach(Seat::confirm);
+        reservation.confirm();
+
+        return ReservationResponse.from(reservation);
+    }
+
+    @Transactional
+    public ReservationResponse cancel(Long reservationId, String userId) {
+        Reservation reservation = reservationRepository.lockById(reservationId)
+                .filter(r -> r.getUserId().equals(userId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "reservation not found"));
+
+        if (!(reservation.getStatus().equals("held") || reservation.getStatus().equals("confirmed"))) {
+            throw new DeclineException(HttpStatus.CONFLICT, "reservation_not_active");
+        }
+
+        releaseSeats(reservation);
+        reservation.cancel();
+
+        return ReservationResponse.from(reservation);
+    }
+
+    private void releaseSeats(Reservation reservation) {
+        seatRepository.lockSeatsForUpdate(reservation.getShowId(), reservation.getSeats())
+                .forEach(Seat::release);
+    }
+
     /** Empty when no key is stored yet; throws DeclineException when the key is reused with a different body. */
     private Optional<ReservationResponse> findReplay(String userId, String idempotencyKey, String requestHash) {
         var existing = idempotencyKeyRepository.findById(new IdempotencyKeyId(userId, idempotencyKey));

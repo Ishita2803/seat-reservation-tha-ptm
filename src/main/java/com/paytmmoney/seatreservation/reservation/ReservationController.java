@@ -46,4 +46,16 @@ public class ReservationController {
             return idempotencyReplayService.resolveReplay(user.userId(), idempotencyKey, showId, request.seats());
         }
     }
+
+    @PostMapping("/reservations/{id}/confirm")
+    public ReservationResponse confirm(@PathVariable("id") Long reservationId, HttpServletRequest httpRequest) {
+        var user = (AuthenticatedUser) httpRequest.getAttribute(JwtAuthFilter.USER_ATTRIBUTE);
+        return reservationService.confirm(reservationId, user.userId());
+    }
+
+    @PostMapping("/reservations/{id}/cancel")
+    public ReservationResponse cancel(@PathVariable("id") Long reservationId, HttpServletRequest httpRequest) {
+        var user = (AuthenticatedUser) httpRequest.getAttribute(JwtAuthFilter.USER_ATTRIBUTE);
+        return reservationService.cancel(reservationId, user.userId());
+    }
 }

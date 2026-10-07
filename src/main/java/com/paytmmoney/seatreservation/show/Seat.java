@@ -85,4 +85,17 @@ public class Seat implements Persistable<SeatId> {
         this.userId = userId;
         this.expiresAt = expiresAt;
     }
+
+    public void confirm() {
+        this.status = "confirmed";
+        this.expiresAt = null;
+    }
+
+    /** Back to available: used by cancel, and by lazy/swept expiry. */
+    public void release() {
+        this.status = "available";
+        this.reservationId = null;
+        this.userId = null;
+        this.expiresAt = null;
+    }
 }
