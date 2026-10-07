@@ -38,7 +38,3 @@ app:
     expiry-hours: 24
   admin-secret: ${ADMIN_SECRET:dev-admin-secret}
   hold-ttl-minutes: 5
-
-logging:
-  level:
-    org.hibernate.SQL: DEBUG

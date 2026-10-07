@@ -3,6 +3,7 @@ package com.paytmmoney.seatreservation.auth;
 import java.io.IOException;
 import java.util.Set;
 
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -12,6 +13,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @Component
+@Order(2)
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     public static final String USER_ATTRIBUTE = "authenticatedUser";
